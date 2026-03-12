@@ -1,0 +1,38 @@
+version: '3.8'
+
+services:
+  web:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "5000:5000"
+    environment:
+      - DATABASE_URL=postgresql://user:password@db/weatherdb
+      - OPENWEATHER_API_KEY=${OPENWEATHER_API_KEY}
+    depends_on:
+      - db
+    volumes:
+      - ../app:/app/app
+    networks:
+      - weather-network
+
+  db:
+    image: postgres:13
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=weatherdb
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - weather-network
+
+volumes:
+  postgres_data:
+
+networks:
+  weather-network:
+    driver: bridge
