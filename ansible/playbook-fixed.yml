@@ -1,0 +1,121 @@
+---
+- name: Setup development environment for Weather App
+  hosts: all
+  gather_facts: yes
+  become: yes  # Будем использовать sudo
+  vars:
+    app_directory: /opt/weather-app
+
+  tasks:
+    - name: Update apt cache (only if needed)
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      become: yes
+      when: ansible_os_family == "Debian"
+      
+    - name: Install common packages
+      apt:
+        name:
+          - git
+          - curl
+          - wget
+          - python3-pip
+          - python3-venv
+          - build-essential
+        state: present
+      become: yes
+      
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      ignore_errors: yes
+      changed_when: false
+      
+    - name: Install Docker if not present
+      shell: |
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sudo sh get-docker.sh
+        rm get-docker.sh
+      when: docker_check.failed
+      become: yes
+      
+    - name: Add user to docker group
+      user:
+        name: "{{ ansible_user_id }}"
+        groups: docker
+        append: yes
+      become: yes
+      when: docker_check.failed
+      
+    - name: Install Docker Compose
+      get_url:
+        url: "https://github.com/docker/compose/releases/download/v2.24.0/docker-compose-linux-x86_64"
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+      become: yes
+      when: docker_check.failed
+      
+    - name: Install kubectl
+      get_url:
+        url: "https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl"
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+      become: yes
+      
+    - name: Install minikube
+      get_url:
+        url: "https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64"
+        dest: /usr/local/bin/minikube
+        mode: '0755'
+      become: yes
+      
+    - name: Create app directory
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        mode: '0755'
+        owner: "{{ ansible_user_id }}"
+        group: "{{ ansible_user_id }}"
+      become: yes
+      
+    - name: Copy application files
+      synchronize:
+        src: ../
+        dest: "{{ app_directory }}/"
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=venv"
+          - "--exclude=__pycache__"
+          - "--exclude=.env"
+      delegate_to: localhost
+      
+    - name: Create .env file
+      copy:
+        dest: "{{ app_directory }}/.env"
+        content: |
+          OPENWEATHER_API_KEY={{ lookup('env', 'OPENWEATHER_API_KEY') | default('your-api-key-here', true) }}
+          DATABASE_URL=postgresql://user:password@localhost/weatherdb
+          FLASK_ENV=development
+          FLASK_APP=app/main.py
+          SECRET_KEY={{ 999999 | random | to_uuid }}
+        mode: '0600'
+      become: yes
+      
+    - name: Show installation summary
+      debug:
+        msg:
+          - "✅ Setup complete!"
+          - "📁 Project directory: {{ app_directory }}"
+          - "🐳 Docker: {{ 'Installed' if docker_check.success else 'Just installed' }}"
+          - "☸️ kubectl: {{ 'Installed' }}"
+          - "🚀 minikube: {{ 'Installed' }}"
+          - ""
+          - "Next steps:"
+          - "1. cd ~/weather-app"
+          - "2. source venv/bin/activate"
+          - "3. python app/main.py  # для локального запуска"
+          - "   OR"
+          - "4. cd docker && docker-compose up -d  # для запуска в Docker"
+          - "   OR"
+          - "5. minikube start && eval $(minikube docker-env) && kubectl apply -f k8s/  # для Kubernetes"

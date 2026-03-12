@@ -1,0 +1,10 @@
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_become: yes
+      ansible_user: alexandro
+      ansible_become_user: root
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_become_method: sudo

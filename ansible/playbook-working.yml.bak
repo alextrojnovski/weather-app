@@ -1,0 +1,226 @@
+---
+- name: Setup development environment for Weather App
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  become: yes
+  vars:
+    real_user: alexandro
+    user_home: "/home/alexandro"
+    app_directory: "{{ user_home }}/weather-app"
+    
+  tasks:
+    - name: Show debug info
+      debug:
+        msg:
+          - "Real user: {{ real_user }}"
+          - "User home: {{ user_home }}"
+          - "App directory: {{ app_directory }}"
+          - "Current user (ansible_user): {{ ansible_user }}"
+          - "Current user ID: {{ ansible_user_id | default('undefined') }}"
+    
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+      become: yes
+    
+    - name: Install required packages
+      apt:
+        name:
+          - curl
+          - git
+          - python3-pip
+          - python3-venv
+          - build-essential
+          - apt-transport-https
+          - ca-certificates
+          - gnupg
+          - lsb-release
+        state: present
+      become: yes
+    
+    - name: Check if Docker is installed
+      command: docker --version
+      register: docker_check
+      ignore_errors: yes
+      changed_when: no
+      
+    - name: Install Docker
+      shell: |
+        curl -fsSL https://get.docker.com -o get-docker.sh
+        sh get-docker.sh
+        rm get-docker.sh
+      when: docker_check.failed
+      become: yes
+      
+    - name: Add user to docker group
+      user:
+        name: "{{ real_user }}"
+        groups: docker
+        append: yes
+      become: yes
+      when: docker_check.failed
+    
+    - name: Install Docker Compose
+      get_url:
+        url: https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64
+        dest: /usr/local/bin/docker-compose
+        mode: '0755'
+      become: yes
+    
+    - name: Install kubectl
+      get_url:
+        url: https://dl.k8s.io/release/v1.29.0/bin/linux/amd64/kubectl
+        dest: /usr/local/bin/kubectl
+        mode: '0755'
+      become: yes
+    
+    - name: Install Minikube
+      get_url:
+        url: https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+        dest: /usr/local/bin/minikube
+        mode: '0755'
+      become: yes
+    
+    - name: Create .env file
+      copy:
+        dest: "{{ app_directory }}/.env"
+        content: |
+          OPENWEATHER_API_KEY={{ lookup('env', 'OPENWEATHER_API_KEY') | default('your-api-key-here', true) }}
+          DATABASE_URL=postgresql://user:password@localhost/weatherdb
+          FLASK_ENV=development
+          FLASK_APP=app/main.py
+          SECRET_KEY={{ 999999 | random | to_uuid }}
+        mode: '0600'
+        owner: "{{ real_user }}"
+        group: "{{ real_user }}"
+      become: yes
+    
+    - name: Create test file
+      file:
+        path: "{{ user_home }}/ansible-success.txt"
+        state: touch
+        mode: '0644'
+        owner: "{{ real_user }}"
+        group: "{{ real_user }}"
+      become: yes
+    
+    - name: Final summary
+      debug:
+        msg:
+          - "╔════════════════════════════════════╗"
+          - "║     WEATHER APP - SETUP COMPLETE   ║"
+          - "╠════════════════════════════════════╣"
+          - "║ User:           {{ real_user }}"
+          - "║ Project:        {{ app_directory }}"
+          - "║ Docker:         {{ '✅ Installed' if docker_check.success else '✅ Just installed' }}"
+          - "║ API Key:        {{ '✅ Set' if lookup('env', 'OPENWEATHER_API_KEY') else '❌ Missing' }}"
+          - "╚════════════════════════════════════╝"
+          - ""
+          - "📋 Next steps:"
+          - "1. Log out and log back in (for docker group to take effect)"
+          - "2. cd ~/weather-app"
+          - "3. python app/main.py  # Запуск приложения"
+          - ""
+          - "🐳 Или через Docker:"
+          - "cd ~/weather-app/docker && docker-compose up -d"
+          - ""
+          - "☸️ Или через Minikube:"
+          - "minikube start"
+          - "eval $(minikube docker-env)"
+          - "docker build -t weather-app:latest -f docker/Dockerfile ."
+          - "kubectl apply -f k8s/"
+    - name: Set Docker status fact
+      set_fact:
+        docker_status: "{{ 'Installed' if docker_check.stdout is defined else 'Just installed' }}"
+      when: docker_check.stdout is defined
+
+    - name: Final summary fixed
+      debug:
+        msg:
+          - "╔════════════════════════════════════╗"
+          - "║     WEATHER APP - SETUP COMPLETE   ║"
+          - "╠════════════════════════════════════╣"
+          - "║ User:           {{ real_user }}"
+          - "║ Project:        {{ app_directory }}"
+          - "║ Docker:         {{ '✅ Already installed' if docker_check.failed == false else '✅ Just installed' }}"
+          - "║ API Key:        {{ '✅ Set' if lookup('env', 'OPENWEATHER_API_KEY') else '❌ Missing' }}"
+          - "╚════════════════════════════════════╝"
+          - ""
+          - "📋 Next steps:"
+          - "1. Log out and log back in (for docker group to take effect)"
+          - "2. cd ~/weather-app"
+          - "3. source venv/bin/activate"
+          - "4. python app/main.py  # Запуск приложения"
+          - ""
+          - "🐳 Или через Docker:"
+          - "cd ~/weather-app/docker && docker-compose up -d"
+          - ""
+          - "☸️ Или через Minikube:"
+          - "minikube start"
+          - "eval $(minikube docker-env)"
+          - "docker build -t weather-app:latest -f docker/Dockerfile ."
+          - "kubectl apply -f k8s/"
+    - name: Set Docker status fact
+      set_fact:
+        docker_status: "{{ 'Installed' if docker_check.stdout is defined else 'Just installed' }}"
+      when: docker_check.stdout is defined
+
+    - name: Final summary fixed
+      debug:
+        msg:
+          - "╔════════════════════════════════════╗"
+          - "║     WEATHER APP - SETUP COMPLETE   ║"
+          - "╠════════════════════════════════════╣"
+          - "║ User:           {{ real_user }}"
+          - "║ Project:        {{ app_directory }}"
+          - "║ Docker:         {{ '✅ Already installed' if docker_check.failed == false else '✅ Just installed' }}"
+          - "║ API Key:        {{ '✅ Set' if lookup('env', 'OPENWEATHER_API_KEY') else '❌ Missing' }}"
+          - "╚════════════════════════════════════╝"
+          - ""
+          - "📋 Next steps:"
+          - "1. Log out and log back in (for docker group to take effect)"
+          - "2. cd ~/weather-app"
+          - "3. source venv/bin/activate"
+          - "4. python app/main.py  # Запуск приложения"
+          - ""
+          - "🐳 Или через Docker:"
+          - "cd ~/weather-app/docker && docker-compose up -d"
+          - ""
+          - "☸️ Или через Minikube:"
+          - "minikube start"
+          - "eval $(minikube docker-env)"
+          - "docker build -t weather-app:latest -f docker/Dockerfile ."
+          - "kubectl apply -f k8s/"
+    - name: Set Docker status fact
+      set_fact:
+        docker_status: "{{ 'Installed' if docker_check.stdout is defined else 'Just installed' }}"
+      when: docker_check.stdout is defined
+
+    - name: Final summary fixed
+      debug:
+        msg:
+          - "╔════════════════════════════════════╗"
+          - "║     WEATHER APP - SETUP COMPLETE   ║"
+          - "╠════════════════════════════════════╣"
+          - "║ User:           {{ real_user }}"
+          - "║ Project:        {{ app_directory }}"
+          - "║ Docker:         {{ '✅ Already installed' if docker_check.failed == false else '✅ Just installed' }}"
+          - "║ API Key:        {{ '✅ Set' if lookup('env', 'OPENWEATHER_API_KEY') else '❌ Missing' }}"
+          - "╚════════════════════════════════════╝"
+          - ""
+          - "📋 Next steps:"
+          - "1. Log out and log back in (for docker group to take effect)"
+          - "2. cd ~/weather-app"
+          - "3. source venv/bin/activate"
+          - "4. python app/main.py  # Запуск приложения"
+          - ""
+          - "🐳 Или через Docker:"
+          - "cd ~/weather-app/docker && docker-compose up -d"
+          - ""
+          - "☸️ Или через Minikube:"
+          - "minikube start"
+          - "eval $(minikube docker-env)"
+          - "docker build -t weather-app:latest -f docker/Dockerfile ."
+          - "kubectl apply -f k8s/"

@@ -1,0 +1,8 @@
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+  vars:
+    ansible_python_interpreter: /usr/bin/python3
+    environment: development
+    # Убираем vault_become_password, будем передавать пароль через --ask-become-pass

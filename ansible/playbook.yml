@@ -1,0 +1,67 @@
+---
+- name: Setup development environment for Weather App
+  hosts: all
+  gather_facts: yes
+  vars:
+    app_directory: /opt/weather-app
+
+  roles:
+    - common
+    - docker
+    - k8s
+
+  tasks:
+    - name: Create app directory
+      file:
+        path: "{{ app_directory }}"
+        state: directory
+        mode: '0755'
+      become: yes
+
+    - name: Copy application files
+      synchronize:
+        src: ../
+        dest: "{{ app_directory }}/"
+        rsync_opts:
+          - "--exclude=.git"
+          - "--exclude=venv"
+          - "--exclude=__pycache__"
+          - "--exclude=.env"
+      delegate_to: "{{ inventory_hostname }}"
+
+    - name: Create .env file from template
+      template:
+        src: env.j2
+        dest: "{{ app_directory }}/.env"
+        mode: '0600'
+      vars:
+        api_key: "{{ lookup('env', 'OPENWEATHER_API_KEY') | default('your-api-key-here', true) }}"
+
+    - name: Build and start Docker containers
+      docker_compose:
+        project_src: "{{ app_directory }}/docker"
+        state: present
+      environment:
+        OPENWEATHER_API_KEY: "{{ lookup('env', 'OPENWEATHER_API_KEY') }}"
+      when: inventory_hostname == "localhost"
+
+    - name: Start minikube
+      shell: |
+        minikube status || minikube start --cpus=4 --memory=8192 --driver=docker
+      become_user: "{{ ansible_user }}"
+      when: inventory_hostname == "localhost"
+
+    - name: Deploy to Kubernetes
+      shell: |
+        cd {{ app_directory }}
+        eval $(minikube -p minikube docker-env)
+        docker build -t weather-app:latest -f docker/Dockerfile .
+        kubectl create namespace weather-app || true
+        kubectl apply -f k8s/configmap.yaml -n weather-app || true
+        kubectl apply -f k8s/postgres.yaml -n weather-app || true
+        kubectl create secret generic weather-secret \
+          --from-literal=api_key={{ lookup('env', 'OPENWEATHER_API_KEY') }} \
+          -n weather-app --dry-run=client -o yaml | kubectl apply -f -
+        kubectl apply -f k8s/deployment.yaml -n weather-app || true
+      become_user: "{{ ansible_user }}"
+      when: inventory_hostname == "localhost"

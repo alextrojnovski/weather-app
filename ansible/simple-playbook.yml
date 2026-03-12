@@ -1,0 +1,34 @@
+---
+- name: Simple test playbook
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  vars:
+    username: alexandro  # Замените на ваше имя
+    app_dir: "/home/alexandro/weather-app"
+    
+  tasks:
+    - name: Show basic info
+      debug:
+        msg:
+          - "Current user: {{ ansible_user }}"
+          - "Home directory: {{ ansible_env.HOME }}"
+          - "Working directory: {{ ansible_env.PWD }}"
+    
+    - name: Test file creation (without sudo)
+      file:
+        path: "{{ ansible_env.HOME }}/ansible-test.txt"
+        state: touch
+        mode: '0644'
+      become: no
+    
+    - name: Test directory creation (with sudo)
+      file:
+        path: "/opt/weather-app-test"
+        state: directory
+        mode: '0755'
+      become: yes
+    
+    - name: Show result
+      debug:
+        msg: "✅ All tests passed!"
